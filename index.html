@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>আমার ব্যাংক তথ্য</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg-0:#080b14;
+    --bg-1:#0d1220;
+    --bg-2:#131a2b;
+    --card:#111827;
+    --card-border:#1f2a40;
+    --accent:#9CF25A;
+    --accent-dim:#5a7a3a;
+    --text-hi:#f3f6fb;
+    --text-mid:#b7c1d4;
+    --text-low:#6d7791;
+    --danger:#ff6b6b;
+    --radius:18px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;height:100%;
+    background:var(--bg-0);
+    color:var(--text-hi);
+    font-family:'Segoe UI',system-ui,-apple-system,'Noto Sans Bengali',sans-serif;
+    overflow-x:hidden;
+  }
+  body{
+    background:
+      radial-gradient(circle at 20% 0%, rgba(156,242,90,0.07), transparent 40%),
+      radial-gradient(circle at 100% 100%, rgba(60,120,255,0.06), transparent 45%),
+      var(--bg-0);
+  }
+  ::selection{background:var(--accent);color:#08110a;}
+
+  /* ---------- Loading Screen ---------- */
+  #loading{
+    position:fixed;inset:0;z-index:100;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:var(--bg-0);
+    transition:opacity .5s ease, visibility .5s ease;
+    gap:22px;
+  }
+  #loading.hide{opacity:0;visibility:hidden;pointer-events:none;}
+  .loader-ring{
+    position:relative;width:92px;height:92px;
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .loader-ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg);}
+  .loader-ring circle.track{fill:none;stroke:#1c2740;stroke-width:5;}
+  .loader-ring circle.arc{
+    fill:none;stroke:var(--accent);stroke-width:5;stroke-linecap:round;
+    stroke-dasharray:220;stroke-dashoffset:160;
+    transform-box:fill-box;
+    transform-origin:50% 50%;
+    animation:spin 1.1s linear infinite;
+    filter:drop-shadow(0 0 6px rgba(156,242,90,.7));
+  }
+  @keyframes spin{ from{ transform:rotate(0deg);} to{ transform:rotate(360deg);} }
+  .loader-icon{font-size:34px;filter:drop-shadow(0 0 8px rgba(156,242,90,.5));}
+  .loading-title{font-size:17px;font-weight:700;letter-spacing:.3px;}
+  .loading-sub{font-size:13px;color:var(--text-low);text-align:center;max-width:260px;line-height:1.5;}
+
+  /* ---------- List Screen ---------- */
+  #listScreen{
+    max-width:520px;margin:0 auto;
+    padding:28px 18px 90px;
+    min-height:100vh;
+  }
+  .brand-row{
+    display:flex;align-items:center;gap:12px;margin-bottom:22px;
+  }
+  .brand-badge{
+    width:46px;height:46px;border-radius:14px;
+    background:linear-gradient(145deg,var(--accent),#5fae2a);
+    display:flex;align-items:center;justify-content:center;
+    font-size:22px;box-shadow:0 6px 18px rgba(156,242,90,.25);
+  }
+  .brand-name{font-size:15px;font-weight:800;color:var(--text-hi);}
+  .brand-sub{font-size:12px;color:var(--text-low);}
+
+  .page-title{font-size:24px;font-weight:800;margin:6px 0 4px;}
+  .page-desc{font-size:13.5px;color:var(--text-mid);margin-bottom:22px;line-height:1.6;}
+
+  .bank-card{
+    display:flex;align-items:center;gap:14px;
+    background:linear-gradient(180deg,var(--card),#0e1420);
+    border:1px solid var(--card-border);
+    border-radius:var(--radius);
+    padding:15px 16px;margin-bottom:12px;
+    cursor:pointer;
+    transition:transform .18s ease, border-color .18s ease, background .18s ease;
+    position:relative;
+    overflow:hidden;
+  }
+  .bank-card:active{transform:scale(.98);}
+  .bank-card:hover{border-color:var(--accent-dim);}
+  .bank-card::after{
+    content:"›";position:absolute;right:16px;top:50%;transform:translateY(-50%);
+    color:var(--text-low);font-size:22px;
+  }
+  .bank-icon{
+    width:48px;height:48px;border-radius:12px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:21px;
+    background:#0a1120;border:1px solid var(--card-border);
+  }
+  .bank-info{flex:1;min-width:0;}
+  .bank-name{font-size:15px;font-weight:700;color:var(--text-hi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .bank-meta{font-size:12px;color:var(--text-low);margin-top:2px;}
+
+  .empty-state{
+    text-align:center;padding:60px 20px;color:var(--text-low);
+  }
+  .skeleton{
+    height:78px;border-radius:var(--radius);
+    background:linear-gradient(90deg,var(--card) 25%,#161f33 37%,var(--card) 63%);
+    background-size:400% 100%;
+    animation:shimmer 1.4s ease infinite;
+    margin-bottom:12px;
+  }
+  @keyframes shimmer{0%{background-position:100% 0}100%{background-position:0 0}}
+
+  /* ---------- Detail Full-Screen Page ---------- */
+  #detailScreen{
+    position:fixed;inset:0;z-index:50;
+    background:var(--bg-0);
+    transform:translateY(100%);
+    transition:transform .38s cubic-bezier(.22,.68,0,1.01);
+    overflow-y:auto;
+  }
+  #detailScreen.open{transform:translateY(0);}
+  .detail-header{
+    position:sticky;top:0;z-index:5;
+    display:flex;align-items:center;gap:14px;
+    padding:18px 18px 16px;
+    background:linear-gradient(180deg, rgba(8,11,20,.97), rgba(8,11,20,.85));
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--card-border);
+  }
+  .back-btn{
+    width:38px;height:38px;border-radius:11px;
+    background:var(--card);border:1px solid var(--card-border);
+    display:flex;align-items:center;justify-content:center;
+    color:var(--text-hi);font-size:18px;cursor:pointer;flex-shrink:0;
+  }
+  .back-btn:active{transform:scale(.92);}
+  .detail-header-title{font-size:16px;font-weight:800;}
+  .detail-header-sub{font-size:11.5px;color:var(--text-low);}
+
+  .detail-hero{
+    display:flex;flex-direction:column;align-items:center;gap:10px;
+    padding:26px 18px 8px;
+    max-width:520px;margin:0 auto;
+  }
+  .detail-icon{
+    width:64px;height:64px;border-radius:18px;
+    background:#0a1120;border:1px solid var(--card-border);
+    display:flex;align-items:center;justify-content:center;font-size:28px;
+    box-shadow:0 0 0 6px rgba(156,242,90,.05);
+  }
+  .detail-bankname{font-size:19px;font-weight:800;text-align:center;}
+  .detail-badge{
+    font-size:11px;color:var(--accent);
+    background:rgba(156,242,90,.1);
+    border:1px solid rgba(156,242,90,.25);
+    padding:3px 10px;border-radius:100px;
+  }
+
+  .field-list{max-width:520px;margin:18px auto 0;padding:0 18px 40px;}
+  .field-row{
+    background:var(--card);
+    border:1px solid var(--card-border);
+    border-radius:14px;
+    padding:13px 14px;
+    margin-bottom:10px;
+    display:flex;align-items:center;justify-content:space-between;
+    gap:12px;
+  }
+  .field-text{min-width:0;flex:1;}
+  .field-label{font-size:11px;color:var(--text-low);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}
+  .field-value{font-size:14.5px;font-weight:600;color:var(--text-hi);word-break:break-word;}
+  .copy-btn{
+    flex-shrink:0;
+    width:38px;height:38px;border-radius:10px;
+    border:1px solid var(--card-border);
+    background:#0a1120;
+    color:var(--accent);
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;font-size:16px;
+    transition:background .15s ease, transform .15s ease;
+  }
+  .copy-btn.copied{background:var(--accent);color:#08110a;}
+  .copy-btn:active{transform:scale(.9);}
+
+  .copy-all-btn{
+    max-width:520px;margin:4px auto 0;padding:0 18px;
+  }
+  .copy-all-inner{
+    background:var(--accent);color:#08110a;
+    border:none;border-radius:14px;
+    padding:14px;width:100%;
+    font-size:14.5px;font-weight:800;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    cursor:pointer;
+  }
+  .copy-all-inner:active{transform:scale(.98);}
+
+  /* ---------- Toast ---------- */
+  #toast{
+    position:fixed;left:50%;bottom:28px;
+    transform:translateX(-50%) translateY(20px);
+    background:var(--accent);color:#08110a;
+    font-size:13.5px;font-weight:700;
+    padding:11px 20px;border-radius:100px;
+    opacity:0;pointer-events:none;
+    transition:opacity .25s ease, transform .25s ease;
+    z-index:200;
+    box-shadow:0 8px 24px rgba(0,0,0,.4);
+    white-space:nowrap;
+  }
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  /* ---------- Admin entry ---------- */
+  .admin-entry{
+    max-width:520px;margin:24px auto 0;padding:0 18px;
+    text-align:center;
+  }
+  .admin-entry a{
+    color:var(--text-low);font-size:11.5px;text-decoration:none;
+    border:1px solid var(--card-border);padding:6px 14px;border-radius:100px;
+    display:inline-flex;align-items:center;gap:6px;
+  }
+
+  /* ---------- Admin Login ---------- */
+  #adminLogin{
+    position:fixed;inset:0;z-index:80;
+    background:var(--bg-0);
+    display:flex;align-items:center;justify-content:center;
+    padding:24px;
+  }
+  .login-box{
+    width:100%;max-width:340px;
+    background:var(--card);border:1px solid var(--card-border);
+    border-radius:20px;padding:30px 24px;text-align:center;
+  }
+  .login-icon{font-size:32px;margin-bottom:10px;}
+  .login-title{font-size:17px;font-weight:800;margin-bottom:4px;}
+  .login-sub{font-size:12.5px;color:var(--text-low);margin-bottom:20px;}
+  .login-input{
+    width:100%;padding:13px 14px;border-radius:12px;
+    background:#0a1120;border:1px solid var(--card-border);
+    color:var(--text-hi);font-size:14.5px;margin-bottom:12px;outline:none;
+  }
+  .login-input:focus{border-color:var(--accent);}
+  .login-btn{
+    width:100%;padding:13px;border-radius:12px;border:none;
+    background:var(--accent);color:#08110a;font-weight:800;font-size:14.5px;cursor:pointer;
+  }
+  .login-error{color:var(--danger);font-size:12px;margin-top:10px;min-height:14px;}
+  .login-back{display:block;margin-top:16px;color:var(--text-low);font-size:12.5px;text-decoration:none;}
+
+  /* ---------- Admin Panel ---------- */
+  #adminScreen{
+    position:fixed;inset:0;z-index:70;
+    background:var(--bg-0);
+    overflow-y:auto;
+    display:none;
+  }
+  #adminScreen.open{display:block;}
+  .admin-header{
+    position:sticky;top:0;z-index:5;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:18px;
+    background:linear-gradient(180deg, rgba(8,11,20,.97), rgba(8,11,20,.85));
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--card-border);
+  }
+  .admin-header-left{display:flex;align-items:center;gap:12px;}
+  .admin-title{font-size:15.5px;font-weight:800;}
+  .admin-sub{font-size:11px;color:var(--text-low);}
+  .admin-body{max-width:520px;margin:0 auto;padding:18px;}
+  .admin-add-btn{
+    width:100%;padding:14px;border-radius:14px;border:1.5px dashed var(--accent-dim);
+    background:transparent;color:var(--accent);font-weight:700;font-size:14px;
+    cursor:pointer;margin-bottom:18px;
+  }
+  .admin-bank-row{
+    background:var(--card);border:1px solid var(--card-border);border-radius:14px;
+    padding:13px 14px;margin-bottom:10px;
+    display:flex;align-items:center;gap:12px;
+  }
+  .admin-bank-row .bank-icon{width:40px;height:40px;font-size:18px;}
+  .admin-bank-name{font-size:14px;font-weight:700;}
+  .admin-bank-meta{font-size:11.5px;color:var(--text-low);}
+  .admin-row-actions{display:flex;gap:8px;margin-left:auto;flex-shrink:0;}
+  .icon-btn-sm{
+    width:34px;height:34px;border-radius:9px;border:1px solid var(--card-border);
+    background:#0a1120;color:var(--text-mid);display:flex;align-items:center;justify-content:center;
+    cursor:pointer;font-size:14px;
+  }
+  .icon-btn-sm.danger{color:var(--danger);}
+
+  /* ---------- Admin Form Modal ---------- */
+  #formModal{
+    position:fixed;inset:0;z-index:90;
+    background:rgba(3,5,10,.7);
+    display:none;align-items:flex-end;justify-content:center;
+  }
+  #formModal.open{display:flex;}
+  .form-sheet{
+    width:100%;max-width:520px;max-height:92vh;overflow-y:auto;
+    background:var(--bg-1);border:1px solid var(--card-border);
+    border-radius:22px 22px 0 0;
+    padding:20px 18px 30px;
+  }
+  .form-sheet-handle{width:40px;height:4px;background:var(--card-border);border-radius:4px;margin:0 auto 16px;}
+  .form-title{font-size:16.5px;font-weight:800;margin-bottom:16px;}
+  .form-label{font-size:12px;color:var(--text-low);margin:14px 0 6px;font-weight:600;}
+  .form-input{
+    width:100%;padding:12px 13px;border-radius:11px;
+    background:#0a1120;border:1px solid var(--card-border);
+    color:var(--text-hi);font-size:14px;outline:none;
+  }
+  .form-input:focus{border-color:var(--accent);}
+  .form-row-2{display:flex;gap:10px;}
+  .form-row-2 > *{flex:1;}
+  .field-edit-row{
+    display:flex;gap:8px;margin-bottom:8px;align-items:center;
+  }
+  .field-edit-row .form-input{flex:1;}
+  .remove-field-btn{
+    width:36px;height:36px;flex-shrink:0;border-radius:10px;border:1px solid var(--card-border);
+    background:#0a1120;color:var(--danger);display:flex;align-items:center;justify-content:center;cursor:pointer;
+  }
+  .add-field-btn{
+    width:100%;padding:11px;border-radius:11px;border:1px dashed var(--card-border);
+    background:transparent;color:var(--text-mid);font-size:13px;cursor:pointer;margin-top:4px;
+  }
+  .form-actions{display:flex;gap:10px;margin-top:22px;}
+  .form-btn{
+    flex:1;padding:13px;border-radius:12px;font-weight:800;font-size:14px;cursor:pointer;border:none;
+  }
+  .form-btn.primary{background:var(--accent);color:#08110a;}
+  .form-btn.ghost{background:var(--card);color:var(--text-mid);border:1px solid var(--card-border);}
+  .form-error{color:var(--danger);font-size:12px;margin-top:10px;}
+</style>
+</head>
+<body>
+
+<!-- Loading Screen -->
+<div id="loading">
+  <div class="loader-ring">
+    <svg viewBox="0 0 92 92">
+      <circle class="track" cx="46" cy="46" r="38"></circle>
+      <circle class="arc" cx="46" cy="46" r="38"></circle>
+    </svg>
+    <span class="loader-icon">🏦</span>
+  </div>
+  <div class="loading-title">লোড হচ্ছে...</div>
+  <div class="loading-sub">ডাটাবেজ থেকে ব্যাংক ডিটেইলস ও সেটিং লোড হচ্ছে</div>
+</div>
+
+<!-- List Screen -->
+<div id="listScreen">
+  <div class="brand-row">
+    <div class="brand-badge">🏦</div>
+    <div>
+      <div class="brand-name">Jonaid Hasan</div>
+      <div class="brand-sub">Payment Information</div>
+    </div>
+  </div>
+  <div class="page-title">আমার ব্যাংক তথ্য</div>
+  <div class="page-desc">নিচের যেকোনো একাউন্টে ট্যাপ করুন — সম্পূর্ণ তথ্য দেখতে ও এক ক্লিকে কপি করতে পারবেন।</div>
+
+  <div id="bankList">
+    <div class="skeleton"></div>
+    <div class="skeleton"></div>
+    <div class="skeleton"></div>
+    <div class="skeleton"></div>
+  </div>
+</div>
+
+<!-- Detail Full Screen -->
+<div id="detailScreen">
+  <div class="detail-header">
+    <div class="back-btn" onclick="closeDetail()">←</div>
+    <div>
+      <div class="detail-header-title" id="dHeaderTitle">ব্যাংক তথ্য</div>
+      <div class="detail-header-sub">ট্যাপ করে কপি করুন</div>
+    </div>
+  </div>
+  <div class="detail-hero">
+    <div class="detail-icon" id="dIcon">🏦</div>
+    <div class="detail-bankname" id="dName">—</div>
+    <div class="detail-badge" id="dBadge">Account Details</div>
+  </div>
+  <div class="copy-all-btn">
+    <button class="copy-all-inner" onclick="copyAll()">📋 সব তথ্য একসাথে কপি করুন</button>
+  </div>
+  <div class="field-list" id="fieldList"></div>
+</div>
+
+<!-- Admin Login -->
+<div id="adminLogin">
+  <div class="login-box">
+    <div class="login-icon">🔐</div>
+    <div class="login-title">অ্যাডমিন প্যানেল</div>
+    <div class="login-sub">আপনার অ্যাডমিন ইমেইল ও পাসওয়ার্ড দিন</div>
+    <input type="email" id="adminEmailInput" class="login-input" placeholder="ইমেইল" onkeydown="if(event.key==='Enter')document.getElementById('adminPassInput').focus()">
+    <input type="password" id="adminPassInput" class="login-input" placeholder="পাসওয়ার্ড" onkeydown="if(event.key==='Enter')tryAdminLogin()">
+    <button class="login-btn" onclick="tryAdminLogin()">প্রবেশ করুন</button>
+    <div class="login-error" id="loginError"></div>
+    <a href="#" class="login-back" onclick="goHome();return false;">← মূল পেজে ফিরে যান</a>
+  </div>
+</div>
+
+<!-- Admin Panel -->
+<div id="adminScreen">
+  <div class="admin-header">
+    <div class="admin-header-left">
+      <div class="back-btn" onclick="goHome()">←</div>
+      <div>
+        <div class="admin-title">অ্যাডমিন প্যানেল</div>
+        <div class="admin-sub" id="adminCount">০টি একাউন্ট</div>
+      </div>
+    </div>
+    <div class="icon-btn-sm" onclick="adminLogout()" title="লগআউট">⏻</div>
+  </div>
+  <div class="admin-body">
+    <button class="admin-add-btn" onclick="openForm()">+ নতুন ব্যাংক / ওয়ালেট যোগ করুন</button>
+    <div id="adminList"></div>
+  </div>
+</div>
+
+<!-- Add/Edit Form Modal -->
+<div id="formModal">
+  <div class="form-sheet">
+    <div class="form-sheet-handle"></div>
+    <div class="form-title" id="formTitle">নতুন ব্যাংক যোগ করুন</div>
+
+    <div class="form-row-2">
+      <div style="flex:2">
+        <div class="form-label">ব্যাংক / ওয়ালেটের নাম</div>
+        <input class="form-input" id="fName" placeholder="যেমন: Pubali Bank Limited">
+      </div>
+      <div style="flex:1">
+        <div class="form-label">আইকন (ইমোজি)</div>
+        <input class="form-input" id="fIcon" placeholder="🏦" maxlength="4">
+      </div>
+    </div>
+
+    <div class="form-label">সাবটাইটেল</div>
+    <input class="form-input" id="fSubtitle" placeholder="যেমন: Bank Account / Mobile Wallet">
+
+    <div class="form-label">তথ্যসমূহ (Name, Account Number, Branch ইত্যাদি)</div>
+    <div id="fieldsWrap"></div>
+    <button class="add-field-btn" onclick="addFieldRow()">+ আরেকটা তথ্য যোগ করুন</button>
+
+    <div class="form-error" id="formError"></div>
+    <div class="form-actions">
+      <button class="form-btn ghost" onclick="closeForm()">বাতিল</button>
+      <button class="form-btn primary" onclick="saveForm()">সংরক্ষণ করুন</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ====== SUPABASE CONFIG ====== */
+const SUPABASE_URL = "https://mpzoqcuurqgxtpbfiine.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wem9xY3V1cnFneHRwYmZpaW5lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyMDEwNzEsImV4cCI6MjEwMTc3NzA3MX0.ziTyhc5n6LY7C2S4kdIJfnwpiYGg5B_-Pjsf3CrL4RQ";
+/* Admin password is now managed entirely in Supabase Auth (Authentication > Users) */
+/* ============================== */
+
+const sb = (SUPABASE_URL.startsWith("http")) ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+let BANKS = [];
+let currentBank = null;
+
+async function loadBanks(){
+  if(!sb){
+    // Config বসানো না থাকলে ডেমো ডেটা দেখাবে
+    BANKS = DEMO_BANKS;
+    renderList();
+    finishLoading();
+    return;
+  }
+  try{
+    const {data, error} = await sb.from('banks').select('*').order('sort_order', {ascending:true});
+    if(error) throw error;
+    BANKS = data || [];
+  }catch(e){
+    console.error(e);
+    BANKS = DEMO_BANKS;
+  }
+  renderList();
+  finishLoading();
+}
+
+function finishLoading(){
+  setTimeout(()=>{
+    document.getElementById('loading').classList.add('hide');
+  }, 550);
+}
+
+function renderList(){
+  const wrap = document.getElementById('bankList');
+  if(!BANKS.length){
+    wrap.innerHTML = `<div class="empty-state">কোনো একাউন্ট পাওয়া যায়নি</div>`;
+    return;
+  }
+  wrap.innerHTML = BANKS.map((b,i)=>`
+    <div class="bank-card" onclick="openDetail(${i})">
+      <div class="bank-icon">${b.icon || '🏦'}</div>
+      <div class="bank-info">
+        <div class="bank-name">${escapeHtml(b.name)}</div>
+        <div class="bank-meta">${escapeHtml(b.subtitle || (b.fields?.length + ' তথ্য'))}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openDetail(index){
+  currentBank = BANKS[index];
+  document.getElementById('dHeaderTitle').textContent = currentBank.name;
+  document.getElementById('dIcon').textContent = currentBank.icon || '🏦';
+  document.getElementById('dName').textContent = currentBank.name;
+  document.getElementById('dBadge').textContent = currentBank.subtitle || 'Account Details';
+
+  const fl = document.getElementById('fieldList');
+  fl.innerHTML = (currentBank.fields || []).map((f,i)=>`
+    <div class="field-row">
+      <div class="field-text">
+        <div class="field-label">${escapeHtml(f.label)}</div>
+        <div class="field-value">${escapeHtml(f.value)}</div>
+      </div>
+      <div class="copy-btn" id="cbtn-${i}" onclick="copyField('${escapeAttr(f.value)}', ${i})">📋</div>
+    </div>
+  `).join('');
+
+  document.getElementById('detailScreen').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+
+function closeDetail(){
+  document.getElementById('detailScreen').classList.remove('open');
+  document.body.style.overflow='';
+}
+
+function copyToClipboard(text){
+  return new Promise((resolve, reject)=>{
+    if(navigator.clipboard && window.isSecureContext){
+      navigator.clipboard.writeText(text).then(resolve).catch(()=>{
+        fallbackCopy(text) ? resolve() : reject();
+      });
+    }else{
+      fallbackCopy(text) ? resolve() : reject();
+    }
+  });
+}
+
+function fallbackCopy(text){
+  try{
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position='fixed';
+    ta.style.top='-9999px';
+    ta.style.left='-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  }catch(e){
+    return false;
+  }
+}
+
+function copyField(value, i){
+  copyToClipboard(value).then(()=>{
+    const btn = document.getElementById('cbtn-'+i);
+    btn.classList.add('copied');
+    btn.textContent='✓';
+    setTimeout(()=>{ btn.classList.remove('copied'); btn.textContent='📋'; }, 1200);
+    showToast('কপি হয়েছে!');
+  }).catch(()=>{
+    showToast('কপি ব্যর্থ হয়েছে — টেক্সট সিলেক্ট করে কপি করুন');
+  });
+}
+
+function copyAll(){
+  if(!currentBank) return;
+  const text = currentBank.fields.map(f=>`${f.label}: ${f.value}`).join('\n');
+  copyToClipboard(text).then(()=>{
+    showToast('সব তথ্য কপি হয়েছে!');
+  }).catch(()=>{
+    showToast('কপি ব্যর্থ হয়েছে — টেক্সট সিলেক্ট করে কপি করুন');
+  });
+}
+
+let toastTimer;
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.classList.remove('show'), 1800);
+}
+
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+function escapeAttr(s){
+  return String(s ?? '').replace(/'/g, "\\'");
+}
+
+/* Demo fallback data — Supabase কনফিগ না বসানো পর্যন্ত এটা দেখাবে */
+const DEMO_BANKS = [
+  {icon:'🏦', name:'Pubali Bank Limited', subtitle:'Bank Account', sort_order:1, fields:[
+    {label:'Name', value:'JONAID HASAN'},
+    {label:'Account Number', value:'33911 0117 1180'},
+    {label:'Branch', value:'KAMALPUR BRANCH'},
+    {label:'Routing No.', value:'175480526'},
+  ]},
+  {icon:'🏦', name:'Dutch-Bangla Bank', subtitle:'Bank Account', sort_order:2, fields:[
+    {label:'Name', value:'JONAID HASAN'},
+    {label:'Account Number', value:'1737348898411'},
+    {label:'Branch', value:'KAMALPUR (BHAIRAB BAZAR)'},
+  ]},
+  {icon:'🏦', name:'Islami Bank Bangladesh PLC', subtitle:'Bank Account', sort_order:3, fields:[
+    {label:'Name', value:'JONAID HASAN'},
+    {label:'Account Number', value:'2050 77302 0022 3214'},
+    {label:'Branch', value:'BHAIRAB BAZAR (KAMOLPUR SUB-BRANCH)'},
+  ]},
+  {icon:'🏦', name:'City Bank', subtitle:'Bank Account', sort_order:4, fields:[
+    {label:'Account Name', value:'JONAID HASAN'},
+    {label:'Account Number', value:'2805133675001'},
+    {label:'Branch District', value:'KISHOREGANJ'},
+    {label:'Branch Name', value:'BHAIRAB BAZAR BRANCH (KISHOREGONJ)'},
+    {label:'Routing Number', value:'225480221'},
+  ]},
+  {icon:'🌍', name:'Qatar National Bank (QNB)', subtitle:'International', sort_order:5, fields:[
+    {label:'Title', value:'JONAID HASAN'},
+    {label:'IBAN', value:'QA79QNBA000000000033012167043'},
+  ]},
+  {icon:'⚡', name:'Fawran', subtitle:'Instant Payment', sort_order:6, fields:[
+    {label:'Title', value:'Jonaid hasan'},
+    {label:'Number', value:'74490898'},
+  ]},
+  {icon:'📱', name:'Ooredoo Money / Ipay Wallet', subtitle:'Mobile Wallet', sort_order:7, fields:[
+    {label:'Title', value:'Jonaid Hasan'},
+    {label:'Number', value:'50789298'},
+    {label:'Qid', value:'30105001938'},
+  ]},
+];
+
+/* ================= ADMIN PANEL ================= */
+let editingId = null;
+
+function goHome(){
+  location.hash = '';
+  document.getElementById('adminLogin').style.display='none';
+  document.getElementById('adminScreen').classList.remove('open');
+}
+
+async function checkRoute(){
+  if(location.hash === '#admin'){
+    const {data} = await sb.auth.getSession();
+    if(data.session){
+      showAdminPanel();
+    }else{
+      document.getElementById('adminLogin').style.display='flex';
+      document.getElementById('adminScreen').classList.remove('open');
+    }
+  }else{
+    document.getElementById('adminLogin').style.display='none';
+    document.getElementById('adminScreen').classList.remove('open');
+  }
+}
+window.addEventListener('hashchange', checkRoute);
+
+async function tryAdminLogin(){
+  const email = document.getElementById('adminEmailInput').value.trim();
+  const pass = document.getElementById('adminPassInput').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if(!email || !pass){
+    errEl.textContent = 'ইমেইল ও পাসওয়ার্ড দিন';
+    return;
+  }
+  const {error} = await sb.auth.signInWithPassword({email, password: pass});
+  if(error){
+    errEl.textContent = 'ভুল ইমেইল বা পাসওয়ার্ড';
+    return;
+  }
+  document.getElementById('adminPassInput').value='';
+  showAdminPanel();
+}
+
+async function adminLogout(){
+  await sb.auth.signOut();
+  goHome();
+}
+
+function showAdminPanel(){
+  document.getElementById('adminLogin').style.display='none';
+  document.getElementById('adminScreen').classList.add('open');
+  renderAdminList();
+}
+
+function renderAdminList(){
+  const wrap = document.getElementById('adminList');
+  document.getElementById('adminCount').textContent = BANKS.length + 'টি একাউন্ট';
+  if(!BANKS.length){
+    wrap.innerHTML = `<div class="empty-state">এখনো কোনো একাউন্ট যোগ করা হয়নি</div>`;
+    return;
+  }
+  wrap.innerHTML = BANKS.map((b,i)=>`
+    <div class="admin-bank-row">
+      <div class="bank-icon">${b.icon||'🏦'}</div>
+      <div>
+        <div class="admin-bank-name">${escapeHtml(b.name)}</div>
+        <div class="admin-bank-meta">${(b.fields||[]).length} টি তথ্য</div>
+      </div>
+      <div class="admin-row-actions">
+        <div class="icon-btn-sm" onclick="openForm(${i})">✎</div>
+        <div class="icon-btn-sm danger" onclick="confirmDelete(${i})">🗑</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openForm(index){
+  editingId = null;
+  document.getElementById('fieldsWrap').innerHTML='';
+  document.getElementById('formError').textContent='';
+
+  if(typeof index === 'number' && BANKS[index]){
+    const b = BANKS[index];
+    editingId = b.id;
+    document.getElementById('formTitle').textContent = 'এডিট করুন';
+    document.getElementById('fName').value = b.name || '';
+    document.getElementById('fIcon').value = b.icon || '';
+    document.getElementById('fSubtitle').value = b.subtitle || '';
+    (b.fields||[]).forEach(f => addFieldRow(f.label, f.value));
+    if(!(b.fields||[]).length) addFieldRow();
+  }else{
+    document.getElementById('formTitle').textContent = 'নতুন ব্যাংক যোগ করুন';
+    document.getElementById('fName').value='';
+    document.getElementById('fIcon').value='🏦';
+    document.getElementById('fSubtitle').value='';
+    addFieldRow('Name','');
+    addFieldRow('Account Number','');
+    addFieldRow('Branch','');
+  }
+  document.getElementById('formModal').classList.add('open');
+}
+
+function closeForm(){
+  document.getElementById('formModal').classList.remove('open');
+}
+
+function addFieldRow(label='', value=''){
+  const wrap = document.getElementById('fieldsWrap');
+  const row = document.createElement('div');
+  row.className = 'field-edit-row';
+  row.innerHTML = `
+    <input class="form-input" placeholder="লেবেল (যেমন: Account Number)" value="${escapeHtml(label)}" data-role="label">
+    <input class="form-input" placeholder="মান" value="${escapeHtml(value)}" data-role="value">
+    <div class="remove-field-btn" onclick="this.parentElement.remove()">✕</div>
+  `;
+  wrap.appendChild(row);
+}
+
+async function saveForm(){
+  const name = document.getElementById('fName').value.trim();
+  const icon = document.getElementById('fIcon').value.trim() || '🏦';
+  const subtitle = document.getElementById('fSubtitle').value.trim();
+  const rows = [...document.querySelectorAll('#fieldsWrap .field-edit-row')];
+  const fields = rows.map(r=>({
+    label: r.querySelector('[data-role="label"]').value.trim(),
+    value: r.querySelector('[data-role="value"]').value.trim()
+  })).filter(f=>f.label && f.value);
+
+  if(!name){
+    document.getElementById('formError').textContent = 'ব্যাংক/ওয়ালেটের নাম দিন';
+    return;
+  }
+  if(!fields.length){
+    document.getElementById('formError').textContent = 'অন্তত একটা তথ্য যোগ করুন';
+    return;
+  }
+  if(!sb){
+    document.getElementById('formError').textContent = 'Supabase কনফিগার করা নেই';
+    return;
+  }
+
+  try{
+    if(editingId){
+      const {error} = await sb.from('banks').update({name, icon, subtitle, fields}).eq('id', editingId);
+      if(error) throw error;
+      showToast('আপডেট হয়েছে!');
+    }else{
+      const sortOrder = BANKS.length ? Math.max(...BANKS.map(b=>b.sort_order||0)) + 1 : 1;
+      const {error} = await sb.from('banks').insert({name, icon, subtitle, fields, sort_order: sortOrder});
+      if(error) throw error;
+      showToast('যোগ করা হয়েছে!');
+    }
+    closeForm();
+    await reloadBanksSilently();
+    renderAdminList();
+  }catch(e){
+    console.error(e);
+    document.getElementById('formError').textContent = 'সংরক্ষণ ব্যর্থ হয়েছে — আবার চেষ্টা করুন';
+  }
+}
+
+function confirmDelete(index){
+  const b = BANKS[index];
+  if(!b) return;
+  if(confirm(`"${b.name}" ডিলিট করতে চান?`)){
+    deleteBank(b.id);
+  }
+}
+
+async function deleteBank(id){
+  if(!sb) return;
+  try{
+    const {error} = await sb.from('banks').delete().eq('id', id);
+    if(error) throw error;
+    showToast('ডিলিট হয়েছে');
+    await reloadBanksSilently();
+    renderAdminList();
+  }catch(e){
+    console.error(e);
+    showToast('ডিলিট ব্যর্থ হয়েছে');
+  }
+}
+
+async function reloadBanksSilently(){
+  if(!sb) return;
+  try{
+    const {data, error} = await sb.from('banks').select('*').order('sort_order', {ascending:true});
+    if(error) throw error;
+    BANKS = data || [];
+    renderList();
+  }catch(e){ console.error(e); }
+}
+/* =============================================== */
+
+loadBanks();
+checkRoute();
+</script>
+</body>
+</html>
