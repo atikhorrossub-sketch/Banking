@@ -10,4 +10,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Supabase
-        run: curl -s "https://mpzoqcuurqgxtpbfiine.supabase.co/rest/v1/banks?select=id&limit=1" -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wem9xY3V1cnFneHRwYmZpaW5lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyMDEwNzEsImV4cCI6MjEwMTc3NzA3MX0.ziTyhc5n6LY7C2S4kdIJfnwpiYGg5B_-Pjsf3CrL4RQ"
+        env:
+          SUPABASE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1wem9xY3V1cnFneHRwYmZpaW5lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyMDEwNzEsImV4cCI6MjEwMTc3NzA3MX0.ziTyhc5n6LY7C2S4kdIJfnwpiYGg5B_-Pjsf3CrL4RQ
+        run: curl -s "https://mpzoqcuurqgxtpbfiine.supabase.co/rest/v1/banks?select=id&limit=1" -H "apikey: $SUPABASE_KEY"
